@@ -1,5 +1,6 @@
 import zigpy.types as t
 from zigpy.zcl import Cluster
+from zigpy.zcl.foundation import ZCLCommandDef
 
 
 class ApplianceIdentification(Cluster):
@@ -8,15 +9,15 @@ class ApplianceIdentification(Cluster):
     ep_attribute = "appliance_id"
     attributes = {
         0x0000: ("basic_identification", t.uint56_t),
-        0x0010: ("company_name", t.CharacterString),
+        0x0010: ("company_name", t.LimitedCharString(16)),
         0x0011: ("company_id", t.uint16_t),
-        0x0012: ("brand_name", t.CharacterString),
+        0x0012: ("brand_name", t.LimitedCharString(16)),
         0x0013: ("brand_id", t.uint16_t),
-        0x0014: ("model", t.CharacterString),
-        0x0015: ("part_number", t.CharacterString),
-        0x0016: ("product_revision", t.CharacterString),
-        0x0017: ("software_revision", t.CharacterString),
-        0x0018: ("product_type_name", t.CharacterString),
+        0x0014: ("model", t.LimitedLVBytes(16)),
+        0x0015: ("part_number", t.LimitedLVBytes(16)),
+        0x0016: ("product_revision", t.LimitedLVBytes(6)),
+        0x0017: ("software_revision", t.LimitedLVBytes(6)),
+        0x0018: ("product_type_name", t.LVBytesSize2),
         0x0019: ("product_type_id", t.uint16_t),
         0x001A: ("ceced_specification_version", t.uint8_t),
     }
@@ -33,10 +34,10 @@ class MeterIdentification(Cluster):
         0x0001: ("meter_type_id", t.uint16_t),
         0x0004: ("data_quality_id", t.uint16_t),
         0x0005: ("customer_name", t.LimitedCharString(16)),
-        0x0006: ("model", t.LimitedCharString(16)),
-        0x0007: ("part_number", t.LimitedCharString(16)),
-        0x0008: ("product_revision", t.LimitedCharString(6)),
-        0x000A: ("software_revision", t.LimitedCharString(6)),
+        0x0006: ("model", t.LimitedLVBytes(16)),
+        0x0007: ("part_number", t.LimitedLVBytes(16)),
+        0x0008: ("product_revision", t.LimitedLVBytes(6)),
+        0x000A: ("software_revision", t.LimitedLVBytes(6)),
         0x000B: ("utility_name", t.LimitedCharString(16)),
         0x000C: ("pod", t.LimitedCharString(16)),
         0x000D: ("available_power", t.int24s),
@@ -51,11 +52,11 @@ class ApplianceEventAlerts(Cluster):
     name = "Appliance Event Alerts"
     ep_attribute = "appliance_event"
     attributes = {}
-    server_commands = {0x0000: ("get_alerts", (), False)}
+    server_commands = {0x00: ZCLCommandDef("get_alerts", {}, False)}
     client_commands = {
-        0x0000: ("get_alarts_response", (), True),
-        0x0001: ("alerts_notification", (), False),
-        0x0002: ("event_notification", (), False),
+        0x00: ZCLCommandDef("get_alarts_response", {}, True),
+        0x01: ZCLCommandDef("alerts_notification", {}, False),
+        0x02: ZCLCommandDef("event_notification", {}, False),
     }
 
 
@@ -67,12 +68,15 @@ class ApplianceStatistics(Cluster):
         0x0000: ("log_max_size", t.uint32_t),
         0x0001: ("log_queue_max_size", t.uint8_t),
     }
-    server_commands = {0x0000: ("log", (), False), 0x0001: ("log_queue", (), False)}
+    server_commands = {
+        0x00: ZCLCommandDef("log", {}, False),
+        0x01: ZCLCommandDef("log_queue", {}, False),
+    }
     client_commands = {
-        0x0000: ("log_notification", (), False),
-        0x0001: ("log_response", (), True),
-        0x0002: ("log_queue_response", (), True),
-        0x0003: ("statistics_available", (), False),
+        0x00: ZCLCommandDef("log_notification", {}, False),
+        0x01: ZCLCommandDef("log_response", {}, True),
+        0x02: ZCLCommandDef("log_queue_response", {}, True),
+        0x03: ZCLCommandDef("statistics_available", {}, False),
     }
 
 
@@ -86,7 +90,7 @@ class ElectricalMeasurement(Cluster):
         # DC Measurement
         0x0100: ("dc_voltage", t.int16s),
         0x0101: ("dc_voltage_min", t.int16s),
-        0x0102: ("dcvoltagemax", t.int16s),
+        0x0102: ("dc_voltage_max", t.int16s),
         0x0103: ("dc_current", t.int16s),
         0x0104: ("dc_current_min", t.int16s),
         0x0105: ("dc_current_max", t.int16s),
@@ -223,12 +227,12 @@ class ElectricalMeasurement(Cluster):
         0x0A17: ("rms_voltage_swell_period_ph__c", t.uint16_t),
     }
     server_commands = {
-        0x0000: ("get_profile_info", (), False),
-        0x0001: ("get_measurement_profile", (), False),
+        0x00: ZCLCommandDef("get_profile_info", {}, False),
+        0x01: ZCLCommandDef("get_measurement_profile", {}, False),
     }
     client_commands = {
-        0x0000: ("get_profile_info_response", (), True),
-        0x0001: ("get_measurement_profile_response", (), True),
+        0x00: ZCLCommandDef("get_profile_info_response", {}, True),
+        0x01: ZCLCommandDef("get_measurement_profile_response", {}, True),
     }
 
 
