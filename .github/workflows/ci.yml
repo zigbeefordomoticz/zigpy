@@ -355,7 +355,7 @@ jobs:
           . venv/bin/activate
           pytest \
             -qq \
-            --timeout=9 \
+            --timeout=15 \
             --durations=10 \
             --cov zigpy \
             -o console_output_style=count \
@@ -366,14 +366,6 @@ jobs:
         with:
           name: coverage-${{ matrix.python-version }}
           path: .coverage
-      - name: Coveralls
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COVERALLS_FLAG_NAME: ${{ matrix.python-version }}
-          COVERALLS_PARALLEL: true
-        run: |
-          . venv/bin/activate
-          coveralls --service=github
 
 
   coverage:
@@ -411,10 +403,4 @@ jobs:
           coverage report --fail-under=99
           coverage xml
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v1
-      - name: Upload coverage to Coveralls
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          . venv/bin/activate
-          coveralls --finish
+        uses: codecov/codecov-action@v2
