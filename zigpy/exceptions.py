@@ -13,6 +13,10 @@ class APIException(ZigbeeException):
 class DeliveryError(ZigbeeException):
     """Message delivery failed in some way"""
 
+    def __init__(self, message: str, status=None):
+        super().__init__(message)
+        self.status = status
+
 
 class InvalidResponse(ZigbeeException):
     """A ZDO or ZCL response has an unsuccessful status code"""
@@ -28,3 +32,7 @@ class NetworkNotFormed(RadioException):
 
 class FormationFailure(RadioException):
     """Network settings could not be written to the radio"""
+
+
+class NetworkSettingsInconsistent(ZigbeeException):
+    """Loaded network settings are different from what is in the database"""

@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
-from typing import Callable, TypeVar
+import typing
 
-CALLABLE_T = TypeVar("CALLABLE_T", bound=Callable)  # pylint: disable=invalid-name
-T = TypeVar("T")
+CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
+T = typing.TypeVar("T")
 
 
 class Bits(list):
@@ -47,6 +47,32 @@ class Bits(list):
         return cls(bits), b""
 
 
+class SerializableBytes:
+    """
+    A container object for raw bytes that enforces `serialize()` will be called.
+    """
+
+    def __init__(self, value: bytes = b"") -> None:
+        if isinstance(value, type(self)):
+            value = value.value
+        elif not isinstance(value, (bytes, bytearray)):
+            raise ValueError(f"Object is not bytes: {value!r}")
+
+        self.value = value
+
+    def __eq__(self, other: typing.Any) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+
+        return self.value == other.value
+
+    def serialize(self) -> bytes:
+        return self.value
+
+    def __repr__(self) -> str:
+        return f"Serialized[{self.value!r}]"
+
+
 NOT_SET = object()
 
 
@@ -55,18 +81,20 @@ class FixedIntType(int):
     _bits = None
     _size = None  # Only for backwards compatibility, not set for smaller ints
 
+    min_value: int
+    max_value: int
+
     def __new__(cls, *args, **kwargs):
         if cls._signed is None or cls._bits is None:
             raise TypeError(f"{cls} is abstract and cannot be created")
 
         n = super().__new__(cls, *args, **kwargs)
 
-        if not cls._signed and not 0 <= n <= 2**cls._bits - 1:
-            raise ValueError(f"{int(n)} is not an unsigned {cls._bits} bit integer")
-        elif (
-            cls._signed and not -(2 ** (cls._bits - 1)) <= n <= 2 ** (cls._bits - 1) - 1
-        ):
-            raise ValueError(f"{int(n)} is not a signed {cls._bits} bit integer")
+        if not cls.min_value <= n <= cls.max_value:
+            raise ValueError(
+                f"{int(n)} is not an {'un' if not cls._signed else ''}signed"
+                f" {cls._bits} bit integer"
+            )
 
         return n
 
@@ -90,6 +118,14 @@ class FixedIntType(int):
                 cls._size = bits // 8
             else:
                 cls._size = None
+
+        if cls._bits is not None and cls._signed is not None:
+            if cls._signed:
+                cls.min_value = -(2 ** (cls._bits - 1))
+                cls.max_value = 2 ** (cls._bits - 1) - 1
+            else:
+                cls.min_value = 0
+                cls.max_value = 2**cls._bits - 1
 
         if repr == "hex":
             assert cls._bits % 4 == 0

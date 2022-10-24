@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 
 import pytest
@@ -523,17 +524,19 @@ def manuf_cluster2():
         ("client_cmd1", sentinel.manufacturer_id),
     ),
 )
-def test_client_cmd_vendor_specific_by_name(
+async def test_client_cmd_vendor_specific_by_name(
     manuf_cluster, manuf_cluster2, cmd_name, manufacturer
 ):
     """Test manufacturer specific client commands."""
-    with patch.object(manuf_cluster, "reply") as cmd_mock:
-        getattr(manuf_cluster, cmd_name)()
+    with patch.object(manuf_cluster, "reply", AsyncMock()) as cmd_mock:
+        await getattr(manuf_cluster, cmd_name)()
+        await asyncio.sleep(0.01)
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1][SIG_MANUFACTURER] is manufacturer
 
-    with patch.object(manuf_cluster2, "reply") as cmd_mock:
-        getattr(manuf_cluster2, cmd_name)()
+    with patch.object(manuf_cluster2, "reply", AsyncMock()) as cmd_mock:
+        await getattr(manuf_cluster2, cmd_name)()
+        await asyncio.sleep(0.01)
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1][SIG_MANUFACTURER] is sentinel.manufacturer_id2
 
@@ -545,17 +548,19 @@ def test_client_cmd_vendor_specific_by_name(
         ("server_cmd1", sentinel.manufacturer_id),
     ),
 )
-def test_srv_cmd_vendor_specific_by_name(
+async def test_srv_cmd_vendor_specific_by_name(
     manuf_cluster, manuf_cluster2, cmd_name, manufacturer
 ):
     """Test manufacturer specific server commands."""
-    with patch.object(manuf_cluster, "request") as cmd_mock:
-        getattr(manuf_cluster, cmd_name)()
+    with patch.object(manuf_cluster, "request", AsyncMock()) as cmd_mock:
+        await getattr(manuf_cluster, cmd_name)()
+        await asyncio.sleep(0.01)
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1]["manufacturer"] is manufacturer
 
-    with patch.object(manuf_cluster2, "request") as cmd_mock:
-        getattr(manuf_cluster2, cmd_name)()
+    with patch.object(manuf_cluster2, "request", AsyncMock()) as cmd_mock:
+        await getattr(manuf_cluster2, cmd_name)()
+        await asyncio.sleep(0.01)
         assert cmd_mock.call_count == 1
         assert cmd_mock.call_args[1]["manufacturer"] is sentinel.manufacturer_id2
 
@@ -957,3 +962,48 @@ async def test_manuf_id_disable(real_device):
         data = mock_call.args[2]
         hdr, _ = zcl.foundation.ZCLHeader.deserialize(data)
         assert hdr.manufacturer is None
+
+
+async def test_request_with_kwargs(real_device):
+    class CustomLevel(zigpy.quirks.CustomCluster, zcl.clusters.general.LevelControl):
+        pass
+
+    class TestQuirk(zigpy.quirks.CustomDevice):
+        signature = {
+            SIG_MODELS_INFO: (("manufacturer", "model"),),
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+        replacement = {
+            SIG_ENDPOINTS: {
+                1: {
+                    SIG_EP_PROFILE: 255,
+                    SIG_EP_TYPE: 255,
+                    SIG_EP_INPUT: [3, CustomLevel],
+                    SIG_EP_OUTPUT: [6],
+                }
+            },
+        }
+
+    registry = DeviceRegistry()
+    registry.add_to_registry(TestQuirk)
+
+    quirked = registry.get_device(real_device)
+    assert isinstance(quirked, TestQuirk)
+
+    ep = quirked.endpoints[1]
+
+    with patch.object(ep, "request", AsyncMock()) as request_mock:
+        await ep.level.move_to_level(0x00, 123)
+        await ep.level.move_to_level(0x00, transition_time=123)
+        await ep.level.move_to_level(level=0x00, transition_time=123)
+
+        assert len(request_mock.mock_calls) == 3
+        assert all(c == request_mock.mock_calls[0] for c in request_mock.mock_calls)
