@@ -25,10 +25,8 @@ from zigpy.zcl.foundation import Status as ZCLStatus
 from zigpy.zdo import types as zdo_t
 
 from tests.async_mock import AsyncMock, MagicMock, patch
-from tests.conftest import App
-from tests.test_backups import (  # noqa: F401; pylint: disable=unused-variable
-    backup_factory,
-)
+from tests.conftest import App, make_ieee
+from tests.test_backups import backup_factory  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
@@ -57,8 +55,7 @@ async def make_app(database_file):
     if isinstance(database_file, pathlib.Path):
         database_file = str(database_file)
 
-    p2 = patch("zigpy.topology.Topology.scan_loop", AsyncMock())
-    with patch("zigpy.ota.OTA.initialize", AsyncMock()), p2:
+    with patch("zigpy.ota.OTA.initialize", AsyncMock()):
         app = await App.new(
             conf.ZIGPY_SCHEMA(
                 {
@@ -68,10 +65,6 @@ async def make_app(database_file):
             )
         )
     return app
-
-
-def make_ieee(init=0):
-    return t.EUI64(map(t.uint8_t, range(init, init + 8)))
 
 
 class FakeCustomDevice(CustomDevice):
@@ -101,6 +94,15 @@ def mock_dev_init(initialize: bool):
             self.node_desc = zdo_t.NodeDescriptor(0, 1, 2, 3, 4, 5, 6, 7, 8)
 
     return _initialize
+
+
+def _mk_rar(attrid, value, status=0):
+    r = zigpy.zcl.foundation.ReadAttributeRecord()
+    r.attrid = attrid
+    r.status = status
+    r.value = zigpy.zcl.foundation.TypeValue()
+    r.value.value = value
+    return r
 
 
 def fake_get_device(device):
@@ -455,82 +457,129 @@ async def test_attribute_update(tmp_path, dev_init):
     await app2.shutdown()
 
 
+@patch("zigpy.topology.REQUEST_DELAY", (0, 0))
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))
-async def test_neighbors(tmp_path):
+async def test_topology(tmp_path):
     """Test neighbor loading."""
 
     ext_pid = t.EUI64.convert("aa:bb:cc:dd:ee:ff:01:02")
-    ieee_1 = make_ieee(1)
-    nwk_1 = 0x1111
-    nei_1 = zdo_t.Neighbor(ext_pid, ieee_1, nwk_1, 2, 1, 1, 0, 0, 0, 15, 250)
 
-    ieee_2 = make_ieee(2)
-    nwk_2 = 0x2222
-    nei_2 = zdo_t.Neighbor(ext_pid, ieee_2, nwk_2, 1, 1, 2, 0, 0, 0, 15, 250)
+    neighbor1 = zdo_t.Neighbor(
+        extended_pan_id=ext_pid,
+        ieee=make_ieee(1),
+        nwk=0x1111,
+        device_type=zdo_t.Neighbor.DeviceType.EndDevice,
+        rx_on_when_idle=1,
+        relationship=zdo_t.Neighbor.Relationship.Child,
+        reserved1=0,
+        permit_joining=0,
+        reserved2=0,
+        depth=15,
+        lqi=250,
+    )
 
-    ieee_3 = make_ieee(3)
-    nwk_3 = 0x3333
-    nei_3 = zdo_t.Neighbor(ext_pid, ieee_3, nwk_3, 1, 1, 2, 0, 0, 0, 15, 250)
+    neighbor2 = zdo_t.Neighbor(
+        extended_pan_id=ext_pid,
+        ieee=make_ieee(2),
+        nwk=0x1112,
+        device_type=zdo_t.Neighbor.DeviceType.EndDevice,
+        rx_on_when_idle=1,
+        relationship=zdo_t.Neighbor.Relationship.Child,
+        reserved1=0,
+        permit_joining=0,
+        reserved2=0,
+        depth=15,
+        lqi=250,
+    )
+
+    route1 = zdo_t.Route(
+        DstNWK=0x1234,
+        RouteStatus=zdo_t.RouteStatus.Active,
+        MemoryConstrained=0,
+        ManyToOne=0,
+        RouteRecordRequired=0,
+        Reserved=0,
+        NextHop=0x6789,
+    )
+
+    route2 = zdo_t.Route(
+        DstNWK=0x1235,
+        RouteStatus=zdo_t.RouteStatus.Active,
+        MemoryConstrained=0,
+        ManyToOne=0,
+        RouteRecordRequired=0,
+        Reserved=0,
+        NextHop=0x6790,
+    )
+
+    ieee = make_ieee(0)
+    nwk = 0x9876
 
     db = tmp_path / "test.db"
     app = await make_app(db)
-    app.handle_join(nwk_1, ieee_1, 0)
+    app.handle_join(nwk, ieee, 0x0000)
 
-    dev_1 = app.get_device(ieee_1)
-    dev_1.node_desc = zdo_t.NodeDescriptor(2, 64, 128, 4174, 82, 82, 0, 82, 0)
-    ep1 = dev_1.add_endpoint(1)
+    dev = app.get_device(ieee)
+    dev.node_desc = zdo_t.NodeDescriptor(
+        logical_type=zdo_t.LogicalType.Router,
+        complex_descriptor_available=0,
+        user_descriptor_available=0,
+        reserved=0,
+        aps_flags=0,
+        frequency_band=zdo_t.NodeDescriptor.FrequencyBand.Freq2400MHz,
+        mac_capability_flags=zdo_t.NodeDescriptor.MACCapabilityFlags.AllocateAddress,
+        manufacturer_code=4174,
+        maximum_buffer_size=82,
+        maximum_incoming_transfer_size=82,
+        server_mask=0,
+        maximum_outgoing_transfer_size=82,
+        descriptor_capability_field=zdo_t.NodeDescriptor.DescriptorCapability.NONE,
+    )
+
+    ep1 = dev.add_endpoint(1)
     ep1.status = zigpy.endpoint.Status.ZDO_INIT
     ep1.profile_id = 260
     ep1.device_type = 0x1234
-    app.device_initialized(dev_1)
+    app.device_initialized(dev)
 
-    # 2nd device
-    app.handle_join(nwk_2, ieee_2, 0)
-    dev_2 = app.get_device(ieee_2)
-    dev_2.node_desc = zdo_t.NodeDescriptor(1, 64, 142, 4476, 82, 82, 0, 82, 0)
-    ep2 = dev_2.add_endpoint(1)
-    ep2.status = zigpy.endpoint.Status.ZDO_INIT
-    ep2.profile_id = 260
-    ep2.device_type = 0x1234
-    app.device_initialized(dev_2)
-
-    neighbors = zdo_t.Neighbors(2, 0, [nei_2, nei_3])
     p1 = patch.object(
-        dev_1.zdo,
-        "request",
-        new=AsyncMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
+        app.topology,
+        "_scan_neighbors",
+        new=AsyncMock(return_value=[neighbor1, neighbor2]),
     )
-    with p1:
-        res = await dev_1.neighbors.scan()
-        assert res
 
-    neighbors = zdo_t.Neighbors(2, 0, [nei_1, nei_3])
-    p1 = patch.object(
-        dev_2.zdo,
-        "request",
-        new=AsyncMock(return_value=(zdo_t.Status.SUCCESS, neighbors)),
+    p2 = patch.object(
+        app.topology,
+        "_scan_routes",
+        new=AsyncMock(return_value=[route1, route2]),
     )
-    with p1:
-        res = await dev_2.neighbors.scan()
-        assert res
+
+    with p1, p2:
+        await app.topology.scan()
+
+    assert len(app.topology.neighbors[ieee]) == 2
+    assert neighbor1 in app.topology.neighbors[ieee]
+    assert neighbor2 in app.topology.neighbors[ieee]
+
+    assert len(app.topology.routes[ieee]) == 2
+    assert route1 in app.topology.routes[ieee]
+    assert route2 in app.topology.routes[ieee]
 
     await app.shutdown()
-    del dev_1, dev_2
+    del dev
 
     # Everything should've been saved - check that it re-loads
     app2 = await make_app(db)
-    dev_1 = app2.get_device(ieee_1)
-    dev_2 = app2.get_device(ieee_2)
+    app2.get_device(ieee)
 
-    assert len(dev_1.neighbors) == 2
-    assert dev_1.neighbors[0].device is dev_2
-    assert dev_1.neighbors[1].device is None
-    assert dev_1.neighbors[1].neighbor.ieee == ieee_3
+    assert len(app2.topology.neighbors[ieee]) == 2
+    assert neighbor1 in app2.topology.neighbors[ieee]
+    assert neighbor2 in app2.topology.neighbors[ieee]
 
-    assert len(dev_2.neighbors.neighbors) == 2
-    assert dev_2.neighbors[0].device is dev_1
-    assert dev_2.neighbors[1].device is None
-    assert dev_2.neighbors[1].neighbor.ieee == ieee_3
+    assert len(app2.topology.routes[ieee]) == 2
+    assert route1 in app2.topology.routes[ieee]
+    assert route2 in app2.topology.routes[ieee]
+
     await app2.shutdown()
 
 
@@ -705,8 +754,43 @@ async def test_unsupported_attribute(tmp_path, dev_init):
     assert "location_desc" in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
     assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
-
     await app2.shutdown()
+
+    async def mockrequest(
+        is_general_req, command, schema, args, manufacturer=None, **kwargs
+    ):
+        assert is_general_req is True
+        assert command == 0
+        rar0010 = _mk_rar(0x0010, "Not Removed", zigpy.zcl.foundation.Status.SUCCESS)
+        return [[rar0010]]
+
+    # Now lets remove an unsupported attribute and make sure it is removed
+    app3 = await make_app(db)
+    dev = app3.get_device(ieee)
+    assert dev.is_initialized == dev_init
+    assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
+    cluster = dev.endpoints[3].in_clusters[0]
+    assert 0x0010 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    cluster.request = mockrequest
+    await cluster.read_attributes([0x0010], allow_cache=False)
+    assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "Not Removed" == dev.endpoints[3].in_clusters[0].get(0x0010)
+    assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    await app3.shutdown()
+
+    # Everything should've been saved - check that it re-loads
+    app4 = await make_app(db)
+    dev = app4.get_device(ieee)
+    assert dev.is_initialized == dev_init
+    assert dev.endpoints[3].device_type == profiles.zha.DeviceType.PUMP
+    assert 0x0010 not in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "Not Removed" == dev.endpoints[3].in_clusters[0].get(0x0010)
+    assert "location_desc" not in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert 0x0011 in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    assert "physical_env" in dev.endpoints[3].in_clusters[0].unsupported_attributes
+    await app4.shutdown()
 
 
 @patch.object(Device, "schedule_initialize", new=mock_dev_init(True))

@@ -9,8 +9,10 @@ import zigpy
 REQUIRES = [
     "aiohttp",
     "aiosqlite>=0.16.0",
+    "async_timeout",
     "crccheck",
     "cryptography",
+    'importlib_resources; python_version<"3.9"',
     "voluptuous",
     'pyserial-asyncio; platform_system!="Windows"',
     'pyserial-asyncio!=0.5; platform_system=="Windows"',
@@ -29,6 +31,6 @@ setup(
     license="GPL-3.0",
     packages=find_packages(exclude=["tests", "tests.*"]),
     install_requires=REQUIRES,
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     package_data={"": ["appdb_schemas/schema_v*.sql"]},
 )

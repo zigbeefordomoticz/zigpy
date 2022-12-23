@@ -3,6 +3,7 @@ from __future__ import annotations
 import enum
 import inspect
 import struct
+import sys
 import typing
 
 CALLABLE_T = typing.TypeVar("CALLABLE_T", bound=typing.Callable)
@@ -80,6 +81,7 @@ class FixedIntType(int):
     _signed = None
     _bits = None
     _size = None  # Only for backwards compatibility, not set for smaller ints
+    _byteorder = None
 
     min_value: int
     max_value: int
@@ -105,7 +107,9 @@ class FixedIntType(int):
     def _bin_repr(self):
         return f"0b{{:0{self._bits}b}}".format(int(self))
 
-    def __init_subclass__(cls, signed=NOT_SET, bits=NOT_SET, repr=NOT_SET) -> None:
+    def __init_subclass__(
+        cls, signed=NOT_SET, bits=NOT_SET, repr=NOT_SET, byteorder=NOT_SET
+    ) -> None:
         super().__init_subclass__()
 
         if signed is not NOT_SET:
@@ -137,6 +141,11 @@ class FixedIntType(int):
             cls.__repr__ = super().__repr__
         elif repr is not NOT_SET:
             raise ValueError(f"Invalid repr value {repr!r}. Must be either hex or bin")
+
+        if byteorder is not NOT_SET:
+            cls._byteorder = byteorder
+        elif cls._byteorder is None:
+            cls._byteorder = "little"
 
         # XXX: The enum module uses the first class with __new__ in its __dict__ as the
         #      member type. We have to ensure this is true for every subclass.
@@ -170,7 +179,7 @@ class FixedIntType(int):
         if self._bits % 8 != 0:
             raise TypeError(f"Integer type with {self._bits} bits is not byte aligned")
 
-        return self.to_bytes(self._bits // 8, "little", signed=self._signed)
+        return self.to_bytes(self._bits // 8, self._byteorder, signed=self._signed)
 
     @classmethod
     def deserialize(cls, data: bytes) -> tuple[FixedIntType, bytes]:
@@ -182,7 +191,7 @@ class FixedIntType(int):
         if len(data) < byte_size:
             raise ValueError(f"Data is too short to contain {byte_size} bytes")
 
-        r = cls.from_bytes(data[:byte_size], "little", signed=cls._signed)
+        r = cls.from_bytes(data[:byte_size], cls._byteorder, signed=cls._signed)
         data = data[byte_size:]
         return r, data
 
@@ -287,6 +296,70 @@ class uint64_t(uint_t, bits=64):
     pass
 
 
+class uint_t_be(FixedIntType, signed=False, byteorder="big"):
+    pass
+
+
+class int_t_be(FixedIntType, signed=True, byteorder="big"):
+    pass
+
+
+class int16s_be(int_t_be, bits=16):
+    pass
+
+
+class int24s_be(int_t_be, bits=24):
+    pass
+
+
+class int32s_be(int_t_be, bits=32):
+    pass
+
+
+class int40s_be(int_t_be, bits=40):
+    pass
+
+
+class int48s_be(int_t_be, bits=48):
+    pass
+
+
+class int56s_be(int_t_be, bits=56):
+    pass
+
+
+class int64s_be(int_t_be, bits=64):
+    pass
+
+
+class uint16_t_be(uint_t_be, bits=16):
+    pass
+
+
+class uint24_t_be(uint_t_be, bits=24):
+    pass
+
+
+class uint32_t_be(uint_t_be, bits=32):
+    pass
+
+
+class uint40_t_be(uint_t_be, bits=40):
+    pass
+
+
+class uint48_t_be(uint_t_be, bits=48):
+    pass
+
+
+class uint56_t_be(uint_t_be, bits=56):
+    pass
+
+
+class uint64_t_be(uint_t_be, bits=64):
+    pass
+
+
 class _IntEnumMeta(enum.EnumMeta):
     def __call__(cls, value, names=None, *args, **kwargs):
         if isinstance(value, str) and value.startswith("0x"):
@@ -302,20 +375,27 @@ def bitmap_factory(int_type: CALLABLE_T) -> CALLABLE_T:
     appropriate methods but with only one non-Enum parent class.
     """
 
-    class _NewEnum(int_type, enum.Flag):
-        # Rebind classmethods to our own class
-        _missing_ = classmethod(enum.IntFlag._missing_.__func__)
-        _create_pseudo_member_ = classmethod(
-            enum.IntFlag._create_pseudo_member_.__func__
-        )
+    if sys.version_info >= (3, 11):
 
-        __or__ = enum.IntFlag.__or__
-        __and__ = enum.IntFlag.__and__
-        __xor__ = enum.IntFlag.__xor__
-        __ror__ = enum.IntFlag.__ror__
-        __rand__ = enum.IntFlag.__rand__
-        __rxor__ = enum.IntFlag.__rxor__
-        __invert__ = enum.IntFlag.__invert__
+        class _NewEnum(int_type, enum.ReprEnum, enum.Flag, boundary=enum.KEEP):
+            pass
+
+    else:
+
+        class _NewEnum(int_type, enum.Flag):
+            # Rebind classmethods to our own class
+            _missing_ = classmethod(enum.IntFlag._missing_.__func__)
+            _create_pseudo_member_ = classmethod(
+                enum.IntFlag._create_pseudo_member_.__func__
+            )
+
+            __or__ = enum.IntFlag.__or__
+            __and__ = enum.IntFlag.__and__
+            __xor__ = enum.IntFlag.__xor__
+            __ror__ = enum.IntFlag.__ror__
+            __rand__ = enum.IntFlag.__rand__
+            __rxor__ = enum.IntFlag.__rxor__
+            __invert__ = enum.IntFlag.__invert__
 
     return _NewEnum
 
@@ -388,6 +468,14 @@ class enum32(enum_factory(uint32_t)):  # noqa: N801
     pass
 
 
+class enum16_be(enum_factory(uint16_t_be)):  # noqa: N801
+    pass
+
+
+class enum32_be(enum_factory(uint32_t_be)):  # noqa: N801
+    pass
+
+
 class bitmap2(bitmap_factory(uint2_t)):
     pass
 
@@ -441,6 +529,34 @@ class bitmap56(bitmap_factory(uint56_t)):
 
 
 class bitmap64(bitmap_factory(uint64_t)):
+    pass
+
+
+class bitmap16_be(bitmap_factory(uint16_t_be)):
+    pass
+
+
+class bitmap24_be(bitmap_factory(uint24_t_be)):
+    pass
+
+
+class bitmap32_be(bitmap_factory(uint32_t_be)):
+    pass
+
+
+class bitmap40_be(bitmap_factory(uint40_t_be)):
+    pass
+
+
+class bitmap48_be(bitmap_factory(uint48_t_be)):
+    pass
+
+
+class bitmap56_be(bitmap_factory(uint56_t_be)):
+    pass
+
+
+class bitmap64_be(bitmap_factory(uint64_t_be)):
     pass
 
 

@@ -109,7 +109,7 @@ To setup a development environment, fork the repository and create a virtual env
 ```shell
 $ git clone git@github.com:youruser/zigpy.git
 $ cd zigpy
-$ virtualenv -p python3.7 venv
+$ virtualenv -p python3.8 venv
 $ source venv/bin/activate
 (venv) $ pip install --upgrade pip pre-commit tox
 (venv) $ pre-commit install            # install pre-commit as a Git hook
@@ -120,7 +120,7 @@ At this point `black` and `isort` will be run by the pre-commit hook, reformatti
  
 ### Unit testing
 
-Run `pytest -lv`, which will show you a stack trace and all the local variables when something breaks. It is recommended that you install both Python 3.7 and 3.8 so that you can run `tox` from the root project folder and see exactly what the CI system will tell you without having to wait for Travis CI or Coveralls. Code coverage information will be written by tox to `htmlcov/index.html`.
+Run `pytest -lv`, which will show you a stack trace and all the local variables when something breaks. It is recommended that you install Python 3.8, 3.9, 3.10 and 3.11 so that you can run `tox` from the root project folder and see exactly what the CI system will tell you without having to wait for Github Actions or Coveralls. Code coverage information will be written by tox to `htmlcov/index.html`.
 
 ### The zigpy API
 

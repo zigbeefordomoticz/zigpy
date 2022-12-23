@@ -12,6 +12,7 @@ import zigpy.types as t
 from zigpy.zdo import types as zdo_t
 
 from tests.async_mock import AsyncMock, MagicMock, patch
+from tests.conftest import app  # noqa: F401
 from tests.test_appdb import auto_kill_aiosqlite, make_app  # noqa: F401
 
 
@@ -87,8 +88,8 @@ async def test_migration_from_3_to_4(open_twice, test_db):
         maximum_outgoing_transfer_size=82,
         descriptor_capability_field=0,
     )
-    assert len(dev1.neighbors) == 1
-    assert dev1.neighbors[0].neighbor == zdo_t.Neighbor(
+    assert len(app.topology.neighbors[dev1.ieee]) == 1
+    assert app.topology.neighbors[dev1.ieee][0] == zdo_t.Neighbor(
         extended_pan_id=t.ExtendedPanId.convert("81:b1:12:dc:9f:bd:f4:b6"),
         ieee=t.EUI64.convert("ec:1b:bd:ff:fe:54:4f:40"),
         nwk=0x6D1C,
@@ -104,8 +105,8 @@ async def test_migration_from_3_to_4(open_twice, test_db):
 
     dev2 = app.get_device(nwk=0x6D1C)
     assert dev2.node_desc == dev1.node_desc.replace(manufacturer_code=4456)
-    assert len(dev2.neighbors) == 1
-    assert dev2.neighbors[0].neighbor == zdo_t.Neighbor(
+    assert len(app.topology.neighbors[dev2.ieee]) == 1
+    assert app.topology.neighbors[dev2.ieee][0] == zdo_t.Neighbor(
         extended_pan_id=t.ExtendedPanId.convert("81:b1:12:dc:9f:bd:f4:b6"),
         ieee=t.EUI64.convert("00:0d:6f:ff:fe:a6:11:7a"),
         nwk=0xBD4D,
@@ -454,8 +455,7 @@ async def test_v5_to_v7_migration(test_db):
     await app.shutdown()
 
 
-async def test_migration_missing_tables():
-    app = MagicMock()
+async def test_migration_missing_tables(app):
     conn = MagicMock()
     conn.close = AsyncMock()
 
